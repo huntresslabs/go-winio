@@ -21,6 +21,8 @@ import (
 
 //sys connectNamedPipe(pipe windows.Handle, o *windows.Overlapped) (err error) = ConnectNamedPipe
 //sys createNamedPipe(name string, flags uint32, pipeMode uint32, maxInstances uint32, outSize uint32, inSize uint32, defaultTimeout uint32, sa *windows.SecurityAttributes) (handle windows.Handle, err error)  [failretval==windows.InvalidHandle] = CreateNamedPipeW
+//sys getNamedPipeClientProcessId(pipe windows.Handle, clientProcessId *uint32) (err error) = GetNamedPipeClientProcessId
+//sys getNamedPipeServerProcessId (pipe windows.Handle, serverProcessId *uint32) (err error) = GetNamedPipeServerProcessId
 //sys disconnectNamedPipe(pipe windows.Handle) (err error) = DisconnectNamedPipe
 //sys getNamedPipeInfo(pipe windows.Handle, flags *uint32, outSize *uint32, inSize *uint32, maxInstances *uint32) (err error) = GetNamedPipeInfo
 //sys getNamedPipeHandleState(pipe windows.Handle, state *uint32, curInstances *uint32, maxCollectionCount *uint32, collectDataTimeout *uint32, userName *uint16, maxUserNameSize uint32) (err error) = GetNamedPipeHandleStateW
@@ -33,6 +35,7 @@ type PipeConn interface {
 	net.Conn
 	Disconnect() error
 	Flush() error
+	ClientPID() uint32
 }
 
 // type aliases for mkwinsyscall code
@@ -111,7 +114,8 @@ var (
 
 type win32Pipe struct {
 	*win32File
-	path string
+	path      string
+	clientPid uint32
 }
 
 var _ PipeConn = (*win32Pipe)(nil)
@@ -130,6 +134,10 @@ func (f *win32Pipe) LocalAddr() net.Addr {
 
 func (f *win32Pipe) RemoteAddr() net.Addr {
 	return pipeAddress(f.path)
+}
+
+func (f *win32Pipe) ClientPID() uint32 {
+	return f.clientPid
 }
 
 func (f *win32Pipe) SetDeadline(t time.Time) error {
@@ -290,6 +298,9 @@ func DialPipeAccessImpLevel(ctx context.Context, path string, access uint32, imp
 		return nil, err
 	}
 
+	var serverPid uint32
+	getNamedPipeServerProcessId(h, &serverPid)
+
 	f, err := makeWin32File(h)
 	if err != nil {
 		windows.Close(h)
@@ -300,10 +311,10 @@ func DialPipeAccessImpLevel(ctx context.Context, path string, access uint32, imp
 	// supports CloseWrite().
 	if flags&windows.PIPE_TYPE_MESSAGE != 0 {
 		return &win32MessageBytePipe{
-			win32Pipe: win32Pipe{win32File: f, path: path},
+			win32Pipe: win32Pipe{win32File: f, clientPid: serverPid, path: path},
 		}, nil
 	}
-	return &win32Pipe{win32File: f, path: path}, nil
+	return &win32Pipe{win32File: f, clientPid: serverPid, path: path}, nil
 }
 
 type acceptResponse struct {
@@ -561,12 +572,15 @@ func (l *win32PipeListener) Accept() (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
+		var clientPid uint32
+		getNamedPipeClientProcessId(response.f.handle, &clientPid)
+		var pipe = win32Pipe{win32File: response.f, clientPid: clientPid, path: l.path}
 		if l.config.MessageMode {
 			return &win32MessageBytePipe{
-				win32Pipe: win32Pipe{win32File: response.f, path: l.path},
+				win32Pipe: pipe,
 			}, nil
 		}
-		return &win32Pipe{win32File: response.f, path: l.path}, nil
+		return &pipe, nil
 	case <-l.doneCh:
 		return nil, ErrPipeListenerClosed
 	}
