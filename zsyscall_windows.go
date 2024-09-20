@@ -61,8 +61,10 @@ var (
 	procCreateNamedPipeW                   = modkernel32.NewProc("CreateNamedPipeW")
 	procDisconnectNamedPipe                = modkernel32.NewProc("DisconnectNamedPipe")
 	procGetCurrentThread                   = modkernel32.NewProc("GetCurrentThread")
+	procGetNamedPipeClientProcessId        = modkernel32.NewProc("GetNamedPipeClientProcessId")
 	procGetNamedPipeHandleStateW           = modkernel32.NewProc("GetNamedPipeHandleStateW")
 	procGetNamedPipeInfo                   = modkernel32.NewProc("GetNamedPipeInfo")
+	procGetNamedPipeServerProcessId        = modkernel32.NewProc("GetNamedPipeServerProcessId")
 	procGetQueuedCompletionStatus          = modkernel32.NewProc("GetQueuedCompletionStatus")
 	procSetFileCompletionNotificationModes = modkernel32.NewProc("SetFileCompletionNotificationModes")
 	procNtCreateNamedPipeFile              = modntdll.NewProc("NtCreateNamedPipeFile")
@@ -307,6 +309,14 @@ func getCurrentThread() (h windows.Handle) {
 	return
 }
 
+func getNamedPipeClientProcessId(pipe windows.Handle, clientProcessId *uint32) (err error) {
+	r1, _, e1 := syscall.SyscallN(procGetNamedPipeClientProcessId.Addr(), uintptr(pipe), uintptr(unsafe.Pointer(clientProcessId)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
 func getNamedPipeHandleState(pipe windows.Handle, state *uint32, curInstances *uint32, maxCollectionCount *uint32, collectDataTimeout *uint32, userName *uint16, maxUserNameSize uint32) (err error) {
 	r1, _, e1 := syscall.SyscallN(procGetNamedPipeHandleStateW.Addr(), uintptr(pipe), uintptr(unsafe.Pointer(state)), uintptr(unsafe.Pointer(curInstances)), uintptr(unsafe.Pointer(maxCollectionCount)), uintptr(unsafe.Pointer(collectDataTimeout)), uintptr(unsafe.Pointer(userName)), uintptr(maxUserNameSize))
 	if r1 == 0 {
@@ -317,6 +327,14 @@ func getNamedPipeHandleState(pipe windows.Handle, state *uint32, curInstances *u
 
 func getNamedPipeInfo(pipe windows.Handle, flags *uint32, outSize *uint32, inSize *uint32, maxInstances *uint32) (err error) {
 	r1, _, e1 := syscall.SyscallN(procGetNamedPipeInfo.Addr(), uintptr(pipe), uintptr(unsafe.Pointer(flags)), uintptr(unsafe.Pointer(outSize)), uintptr(unsafe.Pointer(inSize)), uintptr(unsafe.Pointer(maxInstances)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func getNamedPipeServerProcessId(pipe windows.Handle, serverProcessId *uint32) (err error) {
+	r1, _, e1 := syscall.SyscallN(procGetNamedPipeServerProcessId.Addr(), uintptr(pipe), uintptr(unsafe.Pointer(serverProcessId)))
 	if r1 == 0 {
 		err = errnoErr(e1)
 	}
