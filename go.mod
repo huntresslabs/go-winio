@@ -1,4 +1,4 @@
-module github.com/huntresslabs/go-winio
+module github.com/Microsoft/go-winio
 
 go 1.21
 
